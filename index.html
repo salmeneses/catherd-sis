@@ -223,21 +223,17 @@ tr:hover td{background:var(--surface-2)}
       </div>
     </div>
     <div class="gate-card">
-      <h1>Connect to your Moodle site</h1>
-      <p class="lead">CatHerdSIS talks to Moodle's own Web Services REST API &mdash; the same API a real SIS integration would use. Nothing is proxied through a server of ours.</p>
+      <h1>Enter the demo passphrase</h1>
+      <p class="lead">CatHerdSIS talks to Moodle's own Web Services REST API &mdash; the same API a real SIS integration would use &mdash; through a small relay that holds the real credentials so you never have to.</p>
       <div id="gate-error" class="gate-error hidden"></div>
       <form id="connect-form">
         <div class="field">
-          <label for="f-baseurl">Moodle site URL</label>
-          <input type="url" id="f-baseurl" placeholder="https://your-moodle-site.example" required autocomplete="off">
-        </div>
-        <div class="field">
-          <label for="f-token">Web services token</label>
+          <label for="f-passphrase">Demo passphrase</label>
           <div class="pwfield">
-            <input type="password" id="f-token" placeholder="Paste a scoped token" required autocomplete="off">
+            <input type="password" id="f-passphrase" placeholder="Enter the passphrase for this demo" required autocomplete="off">
             <button type="button" class="btn btn-ghost btn-sm" id="toggle-token">Show</button>
           </div>
-          <div class="hint">From a scoped external service &mdash; Site administration &rarr; Plugins &rarr; Web services &rarr; Manage tokens. Stored only in this browser, never sent anywhere but your Moodle site.</div>
+          <div class="hint">The relay checks this before forwarding anything to Moodle. You never see or handle the underlying API token.</div>
         </div>
         <button type="submit" class="btn btn-primary" id="connect-btn" style="width:100%;justify-content:center">Connect</button>
       </form>
@@ -247,7 +243,7 @@ tr:hover td{background:var(--surface-2)}
         <span class="fchip">enrol_manual_enrol_users</span>
         <span class="fchip">+ 12 more, scoped</span>
       </div>
-      <div class="note">⚠️ This console can only do what the token's service is scoped to allow &mdash; and only while that token is valid. Revoke it in Moodle at any time to switch this console off for everyone using it.</div>
+      <div class="note">⚠️ This console can only do what the relay's token is scoped to allow &mdash; and only while that token is valid. Revoke the token in Moodle, or change the relay's passphrase, to switch this console off for everyone using it.</div>
     </div>
   </div>
 </div>
@@ -359,8 +355,9 @@ tr:hover td{background:var(--surface-2)}
   "use strict";
 
   /* ---------------- state ---------------- */
-  var STORAGE_KEY = 'catherdsis_connection_v1';
-  var conn = null; // {baseUrl, token, siteName, username, scopedFunctions:[]}
+  var RELAY_URL = 'https://catherd-relay.catherdsis.workers.dev/';
+  var STORAGE_KEY = 'catherdsis_connection_v2';
+  var conn = null; // {passphrase, siteName, siteUrl, username, scopedFunctions:[]}
   var data = { users: [], courses: [], categories: [] };
   var ui = {
     view: 'users', userQuery: '', courseQuery: '',
@@ -379,7 +376,7 @@ tr:hover td{background:var(--surface-2)}
 
   /* ---------------- persistence ---------------- */
   function saveConn(){
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({baseUrl:conn.baseUrl, token:conn.token})); }catch(e){}
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({passphrase:conn.passphrase})); }catch(e){}
   }
   function loadSavedConn(){
     try{ var raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
@@ -388,30 +385,29 @@ tr:hover td{background:var(--surface-2)}
     try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
   }
 
-  /* ---------------- API layer ---------------- */
+  /* ---------------- API layer ----------------
+     Calls go to a small relay (never directly to Moodle). The relay holds
+     the real wstoken server-side and only forwards a call once it sees the
+     correct passphrase — this browser never has the real credential. */
   function apiCall(fn, params){
     params = params || {};
-    var form = new URLSearchParams();
-    form.set('wstoken', conn.token);
-    form.set('wsfunction', fn);
-    form.set('moodlewsrestformat', 'json');
-    Object.keys(params).forEach(function(k){
-      if (params[k] !== undefined && params[k] !== null) form.set(k, params[k]);
-    });
     var t0 = performance.now();
-    var url = conn.baseUrl.replace(/\/+$/,'') + '/webservice/rest/server.php';
-    return fetch(url, {method:'POST', body:form}).then(function(res){
+    return fetch(RELAY_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'X-Demo-Passphrase': conn ? conn.passphrase : ''},
+      body: JSON.stringify({wsfunction: fn, params: params})
+    }).then(function(res){
       return res.json().then(function(json){
         var dur = performance.now() - t0;
         var isErr = json && typeof json === 'object' && json.exception;
         logConsole(fn, params, json, dur, !!isErr);
-        if (isErr) throw new Error(json.message || json.errorcode || 'Moodle returned an error');
+        if (isErr) throw new Error(json.message || json.errorcode || 'Relay or Moodle returned an error');
         return json;
       });
     }, function(err){
       var dur = performance.now() - t0;
       logConsole(fn, params, {networkError: err.message}, dur, true);
-      throw new Error('Could not reach ' + url + ' (' + err.message + ')');
+      throw new Error('Could not reach the relay (' + err.message + ')');
     });
   }
 
@@ -437,7 +433,7 @@ tr:hover td{background:var(--surface-2)}
   var gateError = document.getElementById('gate-error');
 
   document.getElementById('toggle-token').addEventListener('click', function(){
-    var f = document.getElementById('f-token');
+    var f = document.getElementById('f-passphrase');
     var show = f.type === 'password';
     f.type = show ? 'text' : 'password';
     this.textContent = show ? 'Hide' : 'Show';
@@ -445,19 +441,19 @@ tr:hover td{background:var(--surface-2)}
 
   document.getElementById('connect-form').addEventListener('submit', function(e){
     e.preventDefault();
-    var baseUrl = document.getElementById('f-baseurl').value.trim();
-    var token = document.getElementById('f-token').value.trim();
-    if (!baseUrl || !token) return;
-    attemptConnect(baseUrl, token);
+    var passphrase = document.getElementById('f-passphrase').value.trim();
+    if (!passphrase) return;
+    attemptConnect(passphrase);
   });
 
-  function attemptConnect(baseUrl, token){
+  function attemptConnect(passphrase){
     var btn = document.getElementById('connect-btn');
     btn.disabled = true; btn.textContent = 'Connecting…';
     gateError.classList.add('hidden');
-    conn = {baseUrl: baseUrl, token: token};
+    conn = {passphrase: passphrase};
     apiCall('core_webservice_get_site_info', {}).then(function(info){
       conn.siteName = info.sitename;
+      conn.siteUrl = info.siteurl;
       conn.username = info.username;
       conn.scopedFunctions = (info.functions||[]).map(function(f){return f.name;}).sort();
       saveConn();
@@ -474,7 +470,8 @@ tr:hover td{background:var(--surface-2)}
   function enterApp(){
     gateEl.classList.add('hidden');
     appEl.classList.remove('hidden');
-    document.getElementById('conn-chip-text').textContent = (new URL(conn.baseUrl)).hostname + ' · ' + conn.username;
+    var host = conn.siteUrl ? (new URL(conn.siteUrl)).hostname : conn.siteName;
+    document.getElementById('conn-chip-text').textContent = host + ' · ' + conn.username;
     loadAll();
   }
 
@@ -483,23 +480,22 @@ tr:hover td{background:var(--surface-2)}
     data = {users:[], courses:[], categories:[]};
     appEl.classList.add('hidden');
     gateEl.classList.remove('hidden');
-    document.getElementById('f-token').value = '';
-    toast('Disconnected. Your token was cleared from this browser.', 'ok');
+    document.getElementById('f-passphrase').value = '';
+    toast('Disconnected. The passphrase was cleared from this browser.', 'ok');
   }
 
   // silent reconnect attempt on load
   (function tryRestore(){
     var saved = loadSavedConn();
-    if (!saved) return;
-    document.getElementById('f-baseurl').value = saved.baseUrl || '';
-    conn = {baseUrl: saved.baseUrl, token: saved.token};
+    if (!saved || !saved.passphrase) return;
+    conn = {passphrase: saved.passphrase};
     apiCall('core_webservice_get_site_info', {}).then(function(info){
-      conn.siteName = info.sitename; conn.username = info.username;
+      conn.siteName = info.sitename; conn.siteUrl = info.siteurl; conn.username = info.username;
       conn.scopedFunctions = (info.functions||[]).map(function(f){return f.name;}).sort();
       enterApp();
     }).catch(function(){
       conn = null;
-      gateError.textContent = 'Your saved connection is no longer valid (token may have been revoked). Reconnect below.';
+      gateError.textContent = 'Your saved passphrase no longer works (it may have been changed, or the Moodle token revoked). Reconnect below.';
       gateError.classList.remove('hidden');
     });
   })();
@@ -994,15 +990,14 @@ tr:hover td{background:var(--surface-2)}
 
   /* ================= SETTINGS / CONNECTION PANEL ================= */
   document.getElementById('open-settings').addEventListener('click', function(){
-    var masked = conn.token.slice(0,4) + '••••••••••••••••';
     var funcs = (conn.scopedFunctions||[]).map(function(f){ return '<span class="fchip">'+esc(f)+'</span>'; }).join('');
     var body =
       '<div class="kv"><span class="k">Site</span><span class="v">'+esc(conn.siteName)+'</span></div>'
-      + '<div class="kv"><span class="k">URL</span><span class="v">'+esc(conn.baseUrl)+'</span></div>'
+      + '<div class="kv"><span class="k">URL</span><span class="v">'+esc(conn.siteUrl||'—')+'</span></div>'
       + '<div class="kv"><span class="k">Connected as</span><span class="v">'+esc(conn.username)+'</span></div>'
-      + '<div class="kv"><span class="k">Token</span><span class="v">'+esc(masked)+'</span></div>'
-      + '<div style="margin-top:16px"><label>Scoped to '+conn.scopedFunctions.length+' functions — nothing else</label><div class="func-list">'+funcs+'</div></div>'
-      + '<div class="note" style="margin-top:18px">To turn this console off for everyone using it, revoke this token in Moodle: <strong>Site administration → Plugins → Web services → Manage tokens</strong>, then delete this row. No need to touch this page.</div>';
+      + '<div class="kv"><span class="k">Credential</span><span class="v">Held by the relay — never sent to this browser</span></div>'
+      + '<div style="margin-top:16px"><label>Relay allows '+conn.scopedFunctions.length+' functions — nothing else</label><div class="func-list">'+funcs+'</div></div>'
+      + '<div class="note" style="margin-top:18px">To turn this console off for everyone, either revoke the token in Moodle (<strong>Site administration → Plugins → Web services → Manage tokens</strong>) or change the relay\'s passphrase. Either one disables every viewer instantly, no code changes needed.</div>';
     openDrawer('Connection', body, function(){
       drawerFoot.innerHTML = '<button type="button" class="btn btn-ghost" id="drawer-cancel2">Close</button><button type="button" class="btn btn-danger" id="do-disconnect">Disconnect this browser</button>';
       document.getElementById('drawer-cancel2').addEventListener('click', closeDrawer);
