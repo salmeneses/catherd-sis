@@ -1,0 +1,1016 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>CatHerdSIS</title>
+<style>
+/* Layout concept: sticky header + horizontal tab strip + single content column (max-width),
+   slide-in right drawer for forms, bottom sheet for the API console, centered modal for confirms. */
+:root{
+  --bg:#F4F7FA; --surface:#FFFFFF; --surface-2:#EBF0F5; --border:#DCE3EA;
+  --text:#142433; --text-muted:#5A6B78; --accent:#226C8C; --accent-ink:#FFFFFF;
+  --brand:#142433; --gold:#9C6B1F; --gold-bg:#F6E7C9; --danger:#B23A3A; --danger-bg:#F7E3E1;
+  --success:#2E7D52; --success-bg:#E1F0E7; --focus:#226C8C;
+  --font-display:'Sora',system-ui,sans-serif; --font-body:'IBM Plex Sans',system-ui,sans-serif; --font-mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1A24; --surface:#152736; --surface-2:#1B3246; --border:#2B4356;
+    --text:#EAF1F6; --text-muted:#93A8B8; --accent:#5FB2D6; --accent-ink:#0E1A24;
+    --brand:#0E1A24; --gold:#E3B24C; --gold-bg:#3A2F17; --danger:#E6898A; --danger-bg:#3A2020;
+    --success:#7FD6A4; --success-bg:#17301F; --focus:#5FB2D6;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1A24; --surface:#152736; --surface-2:#1B3246; --border:#2B4356;
+  --text:#EAF1F6; --text-muted:#93A8B8; --accent:#5FB2D6; --accent-ink:#0E1A24;
+  --brand:#0E1A24; --gold:#E3B24C; --gold-bg:#3A2F17; --danger:#E6898A; --danger-bg:#3A2020;
+  --success:#7FD6A4; --success-bg:#17301F; --focus:#5FB2D6;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:14px;line-height:1.5;
+  padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px));}
+h1,h2,h3,.disp{font-family:var(--font-display);text-wrap:balance}
+button{font-family:var(--font-body)}
+table{font-variant-numeric:tabular-nums}
+a{color:var(--accent)}
+.hidden{display:none!important}
+::selection{background:var(--accent);color:var(--accent-ink)}
+
+/* ---- App shell ---- */
+#app{max-width:1180px;margin:0 auto}
+header.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);
+  padding-block:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  border-bottom:1px solid var(--border)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:19;background:var(--bg)}
+.brand{display:flex;align-items:center;gap:10px}
+.brand .mark{width:34px;height:34px;border-radius:9px;background:var(--brand);display:flex;align-items:center;
+  justify-content:center;font-size:17px;flex:none}
+.brand .names{display:flex;flex-direction:column;line-height:1.15}
+.brand .name{font-family:var(--font-display);font-weight:800;font-size:16.5px;letter-spacing:.2px}
+.brand .tagline{font-size:11px;color:var(--text-muted)}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;border:1px solid var(--border);
+  background:var(--surface);font-size:12.5px;color:var(--text-muted);white-space:nowrap}
+.chip .dot{width:7px;height:7px;border-radius:99px;background:var(--success);flex:none}
+.chip .dot.off{background:var(--danger)}
+.iconbtn{width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:var(--surface);
+  color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
+.iconbtn:hover{border-color:var(--accent)}
+
+nav.tabs{display:flex;gap:4px;padding-block:10px;overflow-x:auto}
+nav.tabs button{font-family:var(--font-display);font-weight:600;font-size:13.5px;color:var(--text-muted);
+  background:transparent;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;white-space:nowrap}
+nav.tabs button.active{color:var(--text);background:var(--surface-2)}
+nav.tabs button:hover:not(.active){color:var(--text)}
+
+main{padding-block:18px 100px}
+.view{display:none}
+.view.active{display:block}
+
+/* ---- Cards / toolbars / tables ---- */
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.panel + .panel{margin-top:16px}
+.toolbar{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.toolbar .search{flex:1;min-width:180px}
+.toolbar h2{font-size:15px;margin:0;flex:none}
+input[type=text],input[type=email],input[type=password],input[type=date],input[type=url],select,textarea{
+  width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg);
+  color:var(--text);font-family:var(--font-body);font-size:13.5px}
+textarea{resize:vertical;min-height:70px}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--focus);outline-offset:1px}
+label{display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:5px}
+.field{margin-bottom:14px}
+.field-row{display:flex;gap:10px}
+.field-row>.field{flex:1;min-width:0}
+.hint{font-size:11.5px;color:var(--text-muted);margin-top:4px}
+
+.btn{font-family:var(--font-display);font-weight:700;font-size:13px;padding:9px 15px;border-radius:9px;
+  border:1px solid transparent;cursor:pointer;display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+.btn-primary{background:var(--accent);color:var(--accent-ink)}
+.btn-primary:hover{filter:brightness(1.07)}
+.btn-ghost{background:transparent;color:var(--text);border-color:var(--border)}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+.btn-danger{background:transparent;color:var(--danger);border-color:var(--danger-bg)}
+.btn-danger:hover{background:var(--danger-bg)}
+.btn-sm{padding:6px 10px;font-size:12px;border-radius:7px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:560px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-muted);
+  padding:10px 16px;border-bottom:1px solid var(--border);font-weight:700}
+td{padding:11px 16px;border-bottom:1px solid var(--border);font-size:13.5px;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--surface-2)}
+.cell-name{font-weight:600}
+.cell-muted{color:var(--text-muted);font-family:var(--font-mono);font-size:12.5px}
+.row-actions{display:flex;gap:6px;justify-content:flex-end}
+
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:11.5px;font-weight:600}
+.badge-ok{background:var(--success-bg);color:var(--success)}
+.badge-off{background:var(--danger-bg);color:var(--danger)}
+.badge-gold{background:var(--gold-bg);color:var(--gold)}
+
+.empty{padding:48px 20px;text-align:center;color:var(--text-muted)}
+.empty .big{font-size:28px;margin-bottom:8px}
+.skeleton{padding:16px}
+.skel-row{height:14px;border-radius:5px;background:var(--surface-2);margin-bottom:10px;animation:pulse 1.3s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.55}50%{opacity:1}}
+
+/* ---- Enrollments mode switch ---- */
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:9px;padding:3px;background:var(--surface)}
+.seg button{border:none;background:transparent;padding:7px 13px;border-radius:7px;font-family:var(--font-display);
+  font-weight:600;font-size:12.5px;color:var(--text-muted);cursor:pointer}
+.seg button.active{background:var(--accent);color:var(--accent-ink)}
+
+/* ---- Drawer ---- */
+#overlay{position:fixed;inset:0;background:rgba(10,16,22,.5);z-index:40;opacity:0;pointer-events:none;transition:opacity .15s}
+#overlay.show{opacity:1;pointer-events:auto}
+#drawer{position:fixed;top:0;right:0;bottom:0;width:420px;max-width:92vw;background:var(--surface);
+  border-left:1px solid var(--border);z-index:41;transform:translateX(100%);transition:transform .18s ease;
+  display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+#drawer.show{transform:translateX(0)}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--border)}
+.drawer-head h3{margin:0;font-size:16px}
+.drawer-body{padding:20px;overflow-y:auto;flex:1}
+.drawer-foot{padding:16px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px}
+
+/* ---- Confirm modal ---- */
+#confirm-backdrop{position:fixed;inset:0;background:rgba(10,16,22,.55);z-index:50;display:flex;align-items:center;
+  justify-content:center;opacity:0;pointer-events:none;transition:opacity .15s;padding:16px}
+#confirm-backdrop.show{opacity:1;pointer-events:auto}
+#confirm-box{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;max-width:380px;width:100%}
+#confirm-box h3{margin:0 0 8px;font-size:15.5px}
+#confirm-box p{margin:0 0 18px;color:var(--text-muted);font-size:13.5px}
+#confirm-box .row{display:flex;justify-content:flex-end;gap:10px}
+
+/* ---- Toasts ---- */
+#toasts{position:fixed;bottom:max(18px, env(safe-area-inset-bottom,0px));left:max(18px, env(safe-area-inset-left,0px));
+  z-index:60;display:flex;flex-direction:column;gap:8px;max-width:360px}
+.toast{background:var(--brand);color:#fff;padding:11px 14px;border-radius:10px;font-size:13px;display:flex;
+  align-items:flex-start;gap:9px;box-shadow:0 8px 24px rgba(0,0,0,.25);animation:slidein .15s ease}
+.toast.err{background:var(--danger)}
+.toast.ok{background:var(--success)}
+@keyframes slidein{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* ---- API console ---- */
+#console-fab{position:fixed;right:max(18px, env(safe-area-inset-right,0px));bottom:max(18px, env(safe-area-inset-bottom,0px));
+  z-index:30;background:var(--brand);color:#fff;border:none;border-radius:99px;padding:11px 16px;
+  font-family:var(--font-mono);font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer;
+  box-shadow:0 8px 20px rgba(0,0,0,.25)}
+#console-fab .n{background:rgba(255,255,255,.18);padding:1px 7px;border-radius:99px;font-size:11px}
+#console{position:fixed;left:0;right:0;bottom:0;z-index:31;background:var(--surface);border-top:1px solid var(--border);
+  height:46vh;min-height:280px;transform:translateY(100%);transition:transform .18s ease;display:flex;flex-direction:column;
+  padding-bottom:env(safe-area-inset-bottom,0px)}
+#console.show{transform:translateY(0)}
+.console-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
+.console-head h3{margin:0;font-size:13.5px;font-family:var(--font-mono)}
+.console-list{flex:1;overflow-y:auto;font-family:var(--font-mono);font-size:12px}
+.console-row{padding:9px 16px;border-bottom:1px solid var(--border);cursor:pointer}
+.console-row:hover{background:var(--surface-2)}
+.console-row .line1{display:flex;gap:8px;align-items:center}
+.console-row .fn{font-weight:600}
+.console-row .time{color:var(--text-muted);margin-left:auto}
+.console-row .dur{color:var(--text-muted)}
+.console-row.err .fn{color:var(--danger)}
+.console-row pre{margin:8px 0 0;white-space:pre-wrap;word-break:break-word;background:var(--surface-2);
+  padding:10px;border-radius:8px;font-size:11.5px;max-height:220px;overflow:auto}
+
+/* ---- Connection gate ---- */
+#gate{min-height:100svh;display:flex;align-items:center;justify-content:center;padding-block:40px}
+.gate-wrap{max-width:460px;width:100%}
+.gate-logo{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+.gate-logo .mark{width:46px;height:46px;border-radius:12px;background:var(--brand);display:flex;align-items:center;
+  justify-content:center;font-size:23px}
+.gate-logo .name{font-family:var(--font-display);font-weight:800;font-size:22px}
+.gate-logo .tagline{color:var(--text-muted);font-size:12.5px;margin-top:1px}
+.gate-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px}
+.gate-card h1{font-size:19px;margin:0 0 6px}
+.gate-card>p.lead{color:var(--text-muted);font-size:13.5px;margin:0 0 20px}
+.feature-chips{display:flex;flex-wrap:wrap;gap:6px;margin:16px 0 22px}
+.fchip{font-family:var(--font-mono);font-size:10.5px;padding:3px 8px;border-radius:7px;background:var(--surface-2);
+  color:var(--text-muted);border:1px solid var(--border)}
+.note{font-size:12px;color:var(--text-muted);background:var(--surface-2);border-radius:10px;padding:11px 13px;margin-top:16px;
+  display:flex;gap:8px}
+.gate-error{background:var(--danger-bg);color:var(--danger);border-radius:10px;padding:11px 13px;font-size:12.5px;margin-bottom:16px}
+.pwfield{display:flex;gap:8px}
+.pwfield input{flex:1}
+
+/* ---- Connection modal (gear) ---- */
+.kv{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+.kv:last-child{border-bottom:none}
+.kv .k{color:var(--text-muted)}
+.kv .v{font-family:var(--font-mono);font-size:12.5px;text-align:right}
+.func-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+
+@media (max-width:640px){
+  #drawer{width:100%}
+  .toolbar{flex-direction:column;align-items:stretch}
+  .toolbar h2{margin-bottom:2px}
+  table{min-width:500px}
+}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<!-- ======================= CONNECTION GATE ======================= -->
+<div id="gate">
+  <div class="gate-wrap">
+    <div class="gate-logo">
+      <div class="mark">🐾</div>
+      <div>
+        <div class="name">CatHerdSIS</div>
+        <div class="tagline">A lightweight Student Information System console for Moodle</div>
+      </div>
+    </div>
+    <div class="gate-card">
+      <h1>Connect to your Moodle site</h1>
+      <p class="lead">CatHerdSIS talks to Moodle's own Web Services REST API &mdash; the same API a real SIS integration would use. Nothing is proxied through a server of ours.</p>
+      <div id="gate-error" class="gate-error hidden"></div>
+      <form id="connect-form">
+        <div class="field">
+          <label for="f-baseurl">Moodle site URL</label>
+          <input type="url" id="f-baseurl" placeholder="https://your-moodle-site.example" required autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="f-token">Web services token</label>
+          <div class="pwfield">
+            <input type="password" id="f-token" placeholder="Paste a scoped token" required autocomplete="off">
+            <button type="button" class="btn btn-ghost btn-sm" id="toggle-token">Show</button>
+          </div>
+          <div class="hint">From a scoped external service &mdash; Site administration &rarr; Plugins &rarr; Web services &rarr; Manage tokens. Stored only in this browser, never sent anywhere but your Moodle site.</div>
+        </div>
+        <button type="submit" class="btn btn-primary" id="connect-btn" style="width:100%;justify-content:center">Connect</button>
+      </form>
+      <div class="feature-chips">
+        <span class="fchip">core_user_create_users</span>
+        <span class="fchip">core_course_update_courses</span>
+        <span class="fchip">enrol_manual_enrol_users</span>
+        <span class="fchip">+ 12 more, scoped</span>
+      </div>
+      <div class="note">⚠️ This console can only do what the token's service is scoped to allow &mdash; and only while that token is valid. Revoke it in Moodle at any time to switch this console off for everyone using it.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= APP ======================= -->
+<div id="app" class="hidden">
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark">🐾</div>
+      <div class="names">
+        <div class="name">CatHerdSIS</div>
+        <div class="tagline">Moodle SIS console</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="chip" id="conn-chip"><span class="dot"></span><span id="conn-chip-text">&mdash;</span></span>
+      <button class="iconbtn" id="open-settings" title="Connection settings" aria-label="Connection settings">⚙️</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button data-view="users" class="active">Users</button>
+    <button data-view="courses">Courses</button>
+    <button data-view="enrollments">Enrollments</button>
+  </nav>
+
+  <main>
+    <!-- ---------------- USERS ---------------- -->
+    <section class="view active" id="view-users">
+      <div class="panel">
+        <div class="toolbar">
+          <h2>Users</h2>
+          <div class="search"><input type="text" id="user-search" placeholder="Filter by name, username, email or ID number"></div>
+          <button class="btn btn-primary" id="new-user-btn">+ New user</button>
+        </div>
+        <div class="tablewrap" id="users-table-wrap"></div>
+      </div>
+    </section>
+
+    <!-- ---------------- COURSES ---------------- -->
+    <section class="view" id="view-courses">
+      <div class="panel">
+        <div class="toolbar">
+          <h2>Courses</h2>
+          <div class="search"><input type="text" id="course-search" placeholder="Filter by name, short name or ID number"></div>
+          <button class="btn btn-primary" id="new-course-btn">+ New course</button>
+        </div>
+        <div class="tablewrap" id="courses-table-wrap"></div>
+      </div>
+    </section>
+
+    <!-- ---------------- ENROLLMENTS ---------------- -->
+    <section class="view" id="view-enrollments">
+      <div class="panel">
+        <div class="toolbar">
+          <h2>Enrollments</h2>
+          <div class="seg" id="enroll-mode">
+            <button data-mode="course" class="active">By course</button>
+            <button data-mode="user">By user</button>
+          </div>
+          <select id="enroll-picker" style="max-width:280px"></select>
+          <button class="btn btn-primary" id="new-enroll-btn" disabled>+ Enroll</button>
+        </div>
+        <div class="tablewrap" id="enroll-table-wrap">
+          <div class="empty"><div class="big">🎓</div>Pick a course above to see who's enrolled, or switch to &ldquo;By user&rdquo; to see a student's course list.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ======================= DRAWER / MODAL / TOAST / CONSOLE ======================= -->
+<div id="overlay"></div>
+<aside id="drawer">
+  <div class="drawer-head"><h3 id="drawer-title"></h3><button class="iconbtn" id="drawer-close">✕</button></div>
+  <div class="drawer-body" id="drawer-body"></div>
+  <div class="drawer-foot" id="drawer-foot"></div>
+</aside>
+
+<div id="confirm-backdrop">
+  <div id="confirm-box">
+    <h3 id="confirm-title">Are you sure?</h3>
+    <p id="confirm-msg"></p>
+    <div class="row">
+      <button class="btn btn-ghost" id="confirm-cancel">Cancel</button>
+      <button class="btn btn-danger" id="confirm-ok" style="background:var(--danger);color:#fff;border-color:var(--danger)">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<button id="console-fab">⌁ API console <span class="n" id="console-count">0</span></button>
+<div id="console">
+  <div class="console-head">
+    <h3>Live request log &mdash; every call this page has made to Moodle</h3>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost btn-sm" id="console-clear">Clear</button>
+      <button class="iconbtn" id="console-close">✕</button>
+    </div>
+  </div>
+  <div class="console-list" id="console-list"></div>
+</div>
+
+<!-- Settings modal reuses the confirm-backdrop pattern via drawer for simplicity -->
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- state ---------------- */
+  var STORAGE_KEY = 'catherdsis_connection_v1';
+  var conn = null; // {baseUrl, token, siteName, username, scopedFunctions:[]}
+  var data = { users: [], courses: [], categories: [] };
+  var ui = {
+    view: 'users', userQuery: '', courseQuery: '',
+    enrollMode: 'course', selectedId: null, enrolledList: [],
+    consoleLog: [], consoleOpen: false
+  };
+  var ROLE_LABELS = {1:'Manager',3:'Teacher',4:'Non-editing teacher',5:'Student'};
+
+  function esc(s){
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  function fmtTime(d){ return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+
+  /* ---------------- persistence ---------------- */
+  function saveConn(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({baseUrl:conn.baseUrl, token:conn.token})); }catch(e){}
+  }
+  function loadSavedConn(){
+    try{ var raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
+  }
+  function clearSavedConn(){
+    try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
+  }
+
+  /* ---------------- API layer ---------------- */
+  function apiCall(fn, params){
+    params = params || {};
+    var form = new URLSearchParams();
+    form.set('wstoken', conn.token);
+    form.set('wsfunction', fn);
+    form.set('moodlewsrestformat', 'json');
+    Object.keys(params).forEach(function(k){
+      if (params[k] !== undefined && params[k] !== null) form.set(k, params[k]);
+    });
+    var t0 = performance.now();
+    var url = conn.baseUrl.replace(/\/+$/,'') + '/webservice/rest/server.php';
+    return fetch(url, {method:'POST', body:form}).then(function(res){
+      return res.json().then(function(json){
+        var dur = performance.now() - t0;
+        var isErr = json && typeof json === 'object' && json.exception;
+        logConsole(fn, params, json, dur, !!isErr);
+        if (isErr) throw new Error(json.message || json.errorcode || 'Moodle returned an error');
+        return json;
+      });
+    }, function(err){
+      var dur = performance.now() - t0;
+      logConsole(fn, params, {networkError: err.message}, dur, true);
+      throw new Error('Could not reach ' + url + ' (' + err.message + ')');
+    });
+  }
+
+  function logConsole(fn, params, response, dur, isErr){
+    var shown = Object.assign({}, params);
+    ui.consoleLog.unshift({time:new Date(), fn:fn, params:shown, response:response, dur:dur, isErr:isErr});
+    if (ui.consoleLog.length > 60) ui.consoleLog.pop();
+    renderConsole();
+  }
+
+  /* ---------------- toasts ---------------- */
+  function toast(msg, type){
+    var el = document.createElement('div');
+    el.className = 'toast' + (type==='err' ? ' err' : type==='ok' ? ' ok' : '');
+    el.textContent = msg;
+    document.getElementById('toasts').appendChild(el);
+    setTimeout(function(){ el.remove(); }, 4200);
+  }
+  function errMsg(e){ return (e && e.message) ? e.message : String(e); }
+
+  /* ---------------- connection gate ---------------- */
+  var gateEl = document.getElementById('gate'), appEl = document.getElementById('app');
+  var gateError = document.getElementById('gate-error');
+
+  document.getElementById('toggle-token').addEventListener('click', function(){
+    var f = document.getElementById('f-token');
+    var show = f.type === 'password';
+    f.type = show ? 'text' : 'password';
+    this.textContent = show ? 'Hide' : 'Show';
+  });
+
+  document.getElementById('connect-form').addEventListener('submit', function(e){
+    e.preventDefault();
+    var baseUrl = document.getElementById('f-baseurl').value.trim();
+    var token = document.getElementById('f-token').value.trim();
+    if (!baseUrl || !token) return;
+    attemptConnect(baseUrl, token);
+  });
+
+  function attemptConnect(baseUrl, token){
+    var btn = document.getElementById('connect-btn');
+    btn.disabled = true; btn.textContent = 'Connecting…';
+    gateError.classList.add('hidden');
+    conn = {baseUrl: baseUrl, token: token};
+    apiCall('core_webservice_get_site_info', {}).then(function(info){
+      conn.siteName = info.sitename;
+      conn.username = info.username;
+      conn.scopedFunctions = (info.functions||[]).map(function(f){return f.name;}).sort();
+      saveConn();
+      enterApp();
+    }).catch(function(e){
+      conn = null;
+      gateError.textContent = 'Could not connect: ' + errMsg(e);
+      gateError.classList.remove('hidden');
+    }).finally(function(){
+      btn.disabled = false; btn.textContent = 'Connect';
+    });
+  }
+
+  function enterApp(){
+    gateEl.classList.add('hidden');
+    appEl.classList.remove('hidden');
+    document.getElementById('conn-chip-text').textContent = (new URL(conn.baseUrl)).hostname + ' · ' + conn.username;
+    loadAll();
+  }
+
+  function disconnect(){
+    conn = null; clearSavedConn();
+    data = {users:[], courses:[], categories:[]};
+    appEl.classList.add('hidden');
+    gateEl.classList.remove('hidden');
+    document.getElementById('f-token').value = '';
+    toast('Disconnected. Your token was cleared from this browser.', 'ok');
+  }
+
+  // silent reconnect attempt on load
+  (function tryRestore(){
+    var saved = loadSavedConn();
+    if (!saved) return;
+    document.getElementById('f-baseurl').value = saved.baseUrl || '';
+    conn = {baseUrl: saved.baseUrl, token: saved.token};
+    apiCall('core_webservice_get_site_info', {}).then(function(info){
+      conn.siteName = info.sitename; conn.username = info.username;
+      conn.scopedFunctions = (info.functions||[]).map(function(f){return f.name;}).sort();
+      enterApp();
+    }).catch(function(){
+      conn = null;
+      gateError.textContent = 'Your saved connection is no longer valid (token may have been revoked). Reconnect below.';
+      gateError.classList.remove('hidden');
+    });
+  })();
+
+  /* ---------------- data loading ---------------- */
+  function loadAll(){
+    renderUsersSkeleton(); renderCoursesSkeleton();
+    Promise.all([
+      apiCall('core_user_get_users', {'criteria[0][key]':'deleted','criteria[0][value]':'0'})
+        .then(function(r){ data.users = (r.users||[]).slice().sort(function(a,b){return a.lastname.localeCompare(b.lastname);}); }),
+      apiCall('core_course_get_courses', {}).then(function(r){
+        data.courses = (r||[]).filter(function(c){return c.id !== 1;})
+          .sort(function(a,b){return a.fullname.localeCompare(b.fullname);});
+      }),
+      apiCall('core_course_get_categories', {}).then(function(r){ data.categories = r||[]; }).catch(function(){ data.categories=[]; })
+    ]).then(function(){
+      renderUsers(); renderCourses(); populateEnrollPicker();
+    }).catch(function(e){
+      toast('Failed to load data: ' + errMsg(e), 'err');
+    });
+  }
+
+  /* ---------------- tabs ---------------- */
+  document.querySelectorAll('nav.tabs button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('nav.tabs button').forEach(function(b){b.classList.remove('active');});
+      btn.classList.add('active');
+      ui.view = btn.dataset.view;
+      document.querySelectorAll('.view').forEach(function(v){v.classList.remove('active');});
+      document.getElementById('view-' + ui.view).classList.add('active');
+    });
+  });
+
+  /* ================= USERS ================= */
+  function renderUsersSkeleton(){
+    var html = '<div class="skeleton">';
+    for (var i=0;i<4;i++) html += '<div class="skel-row" style="width:'+(90-i*10)+'%"></div>';
+    html += '</div>';
+    document.getElementById('users-table-wrap').innerHTML = html;
+  }
+  function filteredUsers(){
+    var q = ui.userQuery.toLowerCase();
+    if (!q) return data.users;
+    return data.users.filter(function(u){
+      return (u.fullname+' '+u.username+' '+u.email+' '+(u.idnumber||'')).toLowerCase().indexOf(q) !== -1;
+    });
+  }
+  function renderUsers(){
+    var list = filteredUsers();
+    var wrap = document.getElementById('users-table-wrap');
+    if (!list.length){
+      wrap.innerHTML = '<div class="empty"><div class="big">🧑‍🎓</div>No users match that filter.</div>';
+      return;
+    }
+    var rows = list.map(function(u){
+      return '<tr>'
+        + '<td><div class="cell-name">'+esc(u.fullname)+'</div><div class="cell-muted">'+esc(u.email)+'</div></td>'
+        + '<td class="cell-muted">'+esc(u.username)+'</td>'
+        + '<td class="cell-muted">'+esc(u.idnumber||'—')+'</td>'
+        + '<td>'+(u.suspended ? '<span class="badge badge-off">Suspended</span>' : '<span class="badge badge-ok">Active</span>')+'</td>'
+        + '<td><div class="row-actions">'
+          + '<button class="btn btn-ghost btn-sm" data-edit-user="'+u.id+'">Edit</button>'
+          + '<button class="btn btn-danger btn-sm" data-del-user="'+u.id+'">Delete</button>'
+        + '</div></td>'
+      + '</tr>';
+    }).join('');
+    wrap.innerHTML = '<table><thead><tr><th>Name</th><th>Username</th><th>ID number</th><th>Status</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+    wrap.querySelectorAll('[data-edit-user]').forEach(function(b){
+      b.addEventListener('click', function(){ openEditUser(Number(b.dataset.editUser)); });
+    });
+    wrap.querySelectorAll('[data-del-user]').forEach(function(b){
+      b.addEventListener('click', function(){ confirmDeleteUser(Number(b.dataset.delUser)); });
+    });
+  }
+  document.getElementById('user-search').addEventListener('input', function(){
+    ui.userQuery = this.value; renderUsers();
+  });
+
+  function genPassword(){
+    var upper='ABCDEFGHJKLMNPQRSTUVWXYZ', lower='abcdefghijkmnpqrstuvwxyz', digit='23456789', sym='!@#%*';
+    function pick(s){return s[Math.floor(Math.random()*s.length)];}
+    var pw = pick(upper)+pick(lower)+pick(digit)+pick(sym);
+    var all = upper+lower+digit+sym;
+    for (var i=0;i<8;i++) pw += pick(all);
+    return pw.split('').sort(function(){return Math.random()-0.5;}).join('');
+  }
+
+  document.getElementById('new-user-btn').addEventListener('click', openCreateUser);
+
+  function openCreateUser(){
+    var body =
+      '<div class="field"><label for="u-first">First name</label><input type="text" id="u-first" required></div>'
+      + '<div class="field"><label for="u-last">Last name</label><input type="text" id="u-last" required></div>'
+      + '<div class="field"><label for="u-username">Username</label><input type="text" id="u-username" required placeholder="e.g. sis.jsmith"></div>'
+      + '<div class="field"><label for="u-email">Email</label><input type="email" id="u-email" required></div>'
+      + '<div class="field"><label for="u-idnumber">ID number <span style="font-weight:400">(optional — your SIS record id)</span></label><input type="text" id="u-idnumber"></div>'
+      + '<div class="field"><label for="u-password">Initial password</label>'
+        + '<div class="pwfield"><input type="text" id="u-password" value="'+genPassword()+'"><button type="button" class="btn btn-ghost btn-sm" id="u-regen">Regenerate</button></div>'
+        + '<div class="hint">Shown once here so you can hand it to the user; not stored anywhere by this console.</div></div>';
+    openDrawer('New user', body, function(){
+      document.getElementById('u-regen').addEventListener('click', function(){
+        document.getElementById('u-password').value = genPassword();
+      });
+      document.getElementById('u-username').addEventListener('input', function(){
+        this.value = this.value.toLowerCase().replace(/[^a-z0-9._-]/g,'');
+      });
+    }, function(){
+      var username = document.getElementById('u-username').value.trim();
+      var payload = {
+        'users[0][username]': username,
+        'users[0][password]': document.getElementById('u-password').value,
+        'users[0][firstname]': document.getElementById('u-first').value.trim(),
+        'users[0][lastname]': document.getElementById('u-last').value.trim(),
+        'users[0][email]': document.getElementById('u-email').value.trim(),
+        'users[0][auth]': 'manual'
+      };
+      var idn = document.getElementById('u-idnumber').value.trim();
+      if (idn) payload['users[0][idnumber]'] = idn;
+      return apiCall('core_user_create_users', payload).then(function(){
+        toast('Created user ' + username, 'ok');
+        closeDrawer();
+        return loadAll();
+      });
+    });
+  }
+
+  function openEditUser(id){
+    var u = data.users.find(function(x){return x.id===id;});
+    if (!u) return;
+    var body =
+      '<div class="field"><label>Username</label><input type="text" value="'+esc(u.username)+'" disabled></div>'
+      + '<div class="field"><label for="eu-first">First name</label><input type="text" id="eu-first" value="'+esc(u.firstname)+'" required></div>'
+      + '<div class="field"><label for="eu-last">Last name</label><input type="text" id="eu-last" value="'+esc(u.lastname)+'" required></div>'
+      + '<div class="field"><label for="eu-email">Email</label><input type="email" id="eu-email" value="'+esc(u.email)+'" required></div>'
+      + '<div class="field"><label for="eu-idnumber">ID number</label><input type="text" id="eu-idnumber" value="'+esc(u.idnumber||'')+'"></div>'
+      + '<div class="field"><label style="display:flex;align-items:center;gap:8px;font-weight:500;color:var(--text)"><input type="checkbox" id="eu-suspended" '+(u.suspended?'checked':'')+' style="width:auto"> Account suspended</label></div>';
+    openDrawer('Edit ' + u.fullname, body, null, function(){
+      var payload = {
+        'users[0][id]': u.id,
+        'users[0][firstname]': document.getElementById('eu-first').value.trim(),
+        'users[0][lastname]': document.getElementById('eu-last').value.trim(),
+        'users[0][email]': document.getElementById('eu-email').value.trim(),
+        'users[0][suspended]': document.getElementById('eu-suspended').checked ? 1 : 0
+      };
+      var idn = document.getElementById('eu-idnumber').value.trim();
+      payload['users[0][idnumber]'] = idn;
+      return apiCall('core_user_update_users', payload).then(function(){
+        toast('Updated ' + u.fullname, 'ok');
+        closeDrawer();
+        return loadAll();
+      });
+    });
+  }
+
+  function confirmDeleteUser(id){
+    var u = data.users.find(function(x){return x.id===id;});
+    if (!u) return;
+    openConfirm('Delete ' + u.fullname + '?', 'This permanently removes the account "'+u.username+'" from Moodle. This cannot be undone.', function(){
+      return apiCall('core_user_delete_users', {'userids[0]': id}).then(function(){
+        toast('Deleted ' + u.fullname, 'ok');
+        return loadAll();
+      });
+    });
+  }
+
+  /* ================= COURSES ================= */
+  function renderCoursesSkeleton(){
+    var html = '<div class="skeleton">';
+    for (var i=0;i<4;i++) html += '<div class="skel-row" style="width:'+(85-i*8)+'%"></div>';
+    html += '</div>';
+    document.getElementById('courses-table-wrap').innerHTML = html;
+  }
+  function filteredCourses(){
+    var q = ui.courseQuery.toLowerCase();
+    if (!q) return data.courses;
+    return data.courses.filter(function(c){
+      return (c.fullname+' '+c.shortname+' '+(c.idnumber||'')).toLowerCase().indexOf(q) !== -1;
+    });
+  }
+  function categoryName(id){
+    var c = data.categories.find(function(x){return x.id===id;});
+    return c ? c.name : ('#'+id);
+  }
+  function renderCourses(){
+    var list = filteredCourses();
+    var wrap = document.getElementById('courses-table-wrap');
+    if (!list.length){
+      wrap.innerHTML = '<div class="empty"><div class="big">📚</div>No courses match that filter.</div>';
+      return;
+    }
+    var rows = list.map(function(c){
+      return '<tr>'
+        + '<td><div class="cell-name">'+esc(c.fullname)+'</div><div class="cell-muted">'+esc(categoryName(c.categoryid))+'</div></td>'
+        + '<td class="cell-muted">'+esc(c.shortname)+'</td>'
+        + '<td class="cell-muted">'+esc(c.idnumber||'—')+'</td>'
+        + '<td>'+(c.visible ? '<span class="badge badge-ok">Visible</span>' : '<span class="badge badge-off">Hidden</span>')+'</td>'
+        + '<td><div class="row-actions">'
+          + '<button class="btn btn-ghost btn-sm" data-edit-course="'+c.id+'">Edit</button>'
+          + '<button class="btn btn-danger btn-sm" data-del-course="'+c.id+'">Delete</button>'
+        + '</div></td>'
+      + '</tr>';
+    }).join('');
+    wrap.innerHTML = '<table><thead><tr><th>Course</th><th>Short name</th><th>ID number</th><th>Status</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+    wrap.querySelectorAll('[data-edit-course]').forEach(function(b){
+      b.addEventListener('click', function(){ openEditCourse(Number(b.dataset.editCourse)); });
+    });
+    wrap.querySelectorAll('[data-del-course]').forEach(function(b){
+      b.addEventListener('click', function(){ confirmDeleteCourse(Number(b.dataset.delCourse)); });
+    });
+  }
+  document.getElementById('course-search').addEventListener('input', function(){
+    ui.courseQuery = this.value; renderCourses();
+  });
+
+  function categoryOptions(selectedId){
+    if (!data.categories.length) return '<option value="1">Miscellaneous (1)</option>';
+    return data.categories.map(function(c){
+      return '<option value="'+c.id+'" '+(c.id===selectedId?'selected':'')+'>'+esc(c.name)+'</option>';
+    }).join('');
+  }
+  function slugify(s){ return s.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
+
+  document.getElementById('new-course-btn').addEventListener('click', openCreateCourse);
+
+  function openCreateCourse(){
+    var body =
+      '<div class="field"><label for="c-fullname">Full name</label><input type="text" id="c-fullname" required></div>'
+      + '<div class="field"><label for="c-shortname">Short name <span style="font-weight:400">(unique)</span></label>'
+        + '<div class="pwfield"><input type="text" id="c-shortname" required><button type="button" class="btn btn-ghost btn-sm" id="c-slug">From name</button></div></div>'
+      + '<div class="field"><label for="c-category">Category</label><select id="c-category">'+categoryOptions(data.categories[0]?data.categories[0].id:1)+'</select></div>'
+      + '<div class="field"><label for="c-idnumber">ID number <span style="font-weight:400">(optional)</span></label><input type="text" id="c-idnumber"></div>'
+      + '<div class="field"><label for="c-summary">Summary</label><textarea id="c-summary"></textarea></div>'
+      + '<div class="field"><label style="display:flex;align-items:center;gap:8px;font-weight:500;color:var(--text)"><input type="checkbox" id="c-visible" checked style="width:auto"> Visible to students</label></div>';
+    openDrawer('New course', body, function(){
+      document.getElementById('c-slug').addEventListener('click', function(){
+        document.getElementById('c-shortname').value = slugify(document.getElementById('c-fullname').value);
+      });
+    }, function(){
+      var fullname = document.getElementById('c-fullname').value.trim();
+      var payload = {
+        'courses[0][fullname]': fullname,
+        'courses[0][shortname]': document.getElementById('c-shortname').value.trim(),
+        'courses[0][categoryid]': document.getElementById('c-category').value,
+        'courses[0][summary]': document.getElementById('c-summary').value.trim(),
+        'courses[0][visible]': document.getElementById('c-visible').checked ? 1 : 0
+      };
+      var idn = document.getElementById('c-idnumber').value.trim();
+      if (idn) payload['courses[0][idnumber]'] = idn;
+      return apiCall('core_course_create_courses', payload).then(function(){
+        toast('Created course ' + fullname, 'ok');
+        closeDrawer();
+        return loadAll();
+      });
+    });
+  }
+
+  function openEditCourse(id){
+    var c = data.courses.find(function(x){return x.id===id;});
+    if (!c) return;
+    var body =
+      '<div class="field"><label for="ec-fullname">Full name</label><input type="text" id="ec-fullname" value="'+esc(c.fullname)+'" required></div>'
+      + '<div class="field"><label for="ec-shortname">Short name</label><input type="text" id="ec-shortname" value="'+esc(c.shortname)+'" required></div>'
+      + '<div class="field"><label for="ec-category">Category</label><select id="ec-category">'+categoryOptions(c.categoryid)+'</select></div>'
+      + '<div class="field"><label for="ec-idnumber">ID number</label><input type="text" id="ec-idnumber" value="'+esc(c.idnumber||'')+'"></div>'
+      + '<div class="field"><label for="ec-summary">Summary</label><textarea id="ec-summary">'+esc(c.summary||'')+'</textarea></div>'
+      + '<div class="field"><label style="display:flex;align-items:center;gap:8px;font-weight:500;color:var(--text)"><input type="checkbox" id="ec-visible" '+(c.visible?'checked':'')+' style="width:auto"> Visible to students</label></div>';
+    openDrawer('Edit ' + c.fullname, body, null, function(){
+      var payload = {
+        'courses[0][id]': c.id,
+        'courses[0][fullname]': document.getElementById('ec-fullname').value.trim(),
+        'courses[0][shortname]': document.getElementById('ec-shortname').value.trim(),
+        'courses[0][categoryid]': document.getElementById('ec-category').value,
+        'courses[0][idnumber]': document.getElementById('ec-idnumber').value.trim(),
+        'courses[0][summary]': document.getElementById('ec-summary').value.trim(),
+        'courses[0][visible]': document.getElementById('ec-visible').checked ? 1 : 0
+      };
+      return apiCall('core_course_update_courses', payload).then(function(){
+        toast('Updated ' + c.fullname, 'ok');
+        closeDrawer();
+        return loadAll();
+      });
+    });
+  }
+
+  function confirmDeleteCourse(id){
+    var c = data.courses.find(function(x){return x.id===id;});
+    if (!c) return;
+    openConfirm('Delete ' + c.fullname + '?', 'This permanently deletes the course "'+c.shortname+'", its content and enrollments. This cannot be undone.', function(){
+      return apiCall('core_course_delete_courses', {'courseids[0]': id}).then(function(){
+        toast('Deleted ' + c.fullname, 'ok');
+        return loadAll();
+      });
+    });
+  }
+
+  /* ================= ENROLLMENTS ================= */
+  document.querySelectorAll('#enroll-mode button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('#enroll-mode button').forEach(function(b){b.classList.remove('active');});
+      btn.classList.add('active');
+      ui.enrollMode = btn.dataset.mode;
+      ui.selectedId = null;
+      populateEnrollPicker();
+      renderEnrollTable();
+    });
+  });
+
+  function populateEnrollPicker(){
+    var sel = document.getElementById('enroll-picker');
+    var items = ui.enrollMode === 'course' ? data.courses : data.users;
+    var label = ui.enrollMode === 'course' ? 'course' : 'user';
+    sel.innerHTML = '<option value="">Select a '+label+'…</option>' + items.map(function(it){
+      var text = ui.enrollMode === 'course' ? (it.fullname + ' ('+it.shortname+')') : (it.fullname + ' ('+it.username+')');
+      return '<option value="'+it.id+'">'+esc(text)+'</option>';
+    }).join('');
+    sel.onchange = function(){
+      ui.selectedId = sel.value ? Number(sel.value) : null;
+      document.getElementById('new-enroll-btn').disabled = !ui.selectedId;
+      renderEnrollTable();
+    };
+  }
+
+  function renderEnrollTable(){
+    var wrap = document.getElementById('enroll-table-wrap');
+    if (!ui.selectedId){
+      wrap.innerHTML = '<div class="empty"><div class="big">🎓</div>Pick a '+(ui.enrollMode==='course'?'course':'user')+' above to see '+(ui.enrollMode==='course'?"who's enrolled":'their courses')+'.</div>';
+      return;
+    }
+    wrap.innerHTML = '<div class="skeleton"><div class="skel-row" style="width:70%"></div><div class="skel-row" style="width:55%"></div></div>';
+    var call = ui.enrollMode === 'course'
+      ? apiCall('core_enrol_get_enrolled_users', {courseid: ui.selectedId})
+      : apiCall('core_enrol_get_users_courses', {userid: ui.selectedId});
+    call.then(function(list){
+      ui.enrolledList = list || [];
+      if (!ui.enrolledList.length){
+        wrap.innerHTML = '<div class="empty"><div class="big">—</div>No '+(ui.enrollMode==='course'?'enrollments yet':'course enrollments yet')+'.</div>';
+        return;
+      }
+      var rows = ui.enrolledList.map(function(item){
+        if (ui.enrollMode === 'course'){
+          var roleNames = (item.roles||[]).map(function(r){return r.shortname;}).join(', ') || '—';
+          return '<tr><td><div class="cell-name">'+esc(item.fullname)+'</div><div class="cell-muted">'+esc(item.email)+'</div></td>'
+            + '<td class="cell-muted">'+esc(roleNames)+'</td>'
+            + '<td><div class="row-actions"><button class="btn btn-danger btn-sm" data-unenroll="'+item.id+'">Unenroll</button></div></td></tr>';
+        } else {
+          return '<tr><td><div class="cell-name">'+esc(item.fullname)+'</div><div class="cell-muted">'+esc(item.shortname)+'</div></td>'
+            + '<td class="cell-muted">'+(item.visible?'Visible':'Hidden')+'</td>'
+            + '<td><div class="row-actions"><button class="btn btn-danger btn-sm" data-unenroll="'+item.id+'">Unenroll</button></div></td></tr>';
+        }
+      }).join('');
+      var head = ui.enrollMode === 'course'
+        ? '<tr><th>Student</th><th>Role</th><th></th></tr>'
+        : '<tr><th>Course</th><th>Status</th><th></th></tr>';
+      wrap.innerHTML = '<table><thead>'+head+'</thead><tbody>'+rows+'</tbody></table>';
+      wrap.querySelectorAll('[data-unenroll]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var otherId = Number(b.dataset.unenroll);
+          var userId = ui.enrollMode === 'course' ? otherId : ui.selectedId;
+          var courseId = ui.enrollMode === 'course' ? ui.selectedId : otherId;
+          openConfirm('Remove this enrollment?', 'The user will immediately lose access to this course.', function(){
+            return apiCall('enrol_manual_unenrol_users', {'enrolments[0][userid]': userId, 'enrolments[0][courseid]': courseId}).then(function(){
+              toast('Enrollment removed', 'ok');
+              renderEnrollTable();
+            });
+          });
+        });
+      });
+    }).catch(function(e){
+      wrap.innerHTML = '<div class="empty">Could not load: '+esc(errMsg(e))+'</div>';
+    });
+  }
+
+  document.getElementById('new-enroll-btn').addEventListener('click', function(){
+    if (!ui.selectedId) return;
+    var isCourseMode = ui.enrollMode === 'course';
+    var otherItems = isCourseMode ? data.users : data.courses;
+    var otherLabel = isCourseMode ? 'Student' : 'Course';
+    var options = otherItems.map(function(it){
+      var text = isCourseMode ? (it.fullname+' ('+it.username+')') : (it.fullname+' ('+it.shortname+')');
+      return '<option value="'+it.id+'">'+esc(text)+'</option>';
+    }).join('');
+    var body =
+      '<div class="field"><label for="en-other">'+otherLabel+'</label><select id="en-other" required><option value="">Select…</option>'+options+'</select></div>'
+      + '<div class="field"><label for="en-role">Role</label><select id="en-role">'
+        + '<option value="5" selected>Student</option><option value="3">Teacher</option><option value="4">Non-editing teacher</option><option value="1">Manager</option>'
+      + '</select><div class="hint">Default Moodle role IDs — confirm against Site administration → Users → Define roles if this site customized them.</div></div>'
+      + '<div class="field-row">'
+        + '<div class="field"><label for="en-start">Start date <span style="font-weight:400">(optional)</span></label><input type="date" id="en-start"></div>'
+        + '<div class="field"><label for="en-end">End date <span style="font-weight:400">(optional)</span></label><input type="date" id="en-end"></div>'
+      + '</div>';
+    openDrawer('Enroll ' + (isCourseMode?'a student':'in a course'), body, null, function(){
+      var otherId = Number(document.getElementById('en-other').value);
+      if (!otherId) { toast('Pick a ' + otherLabel.toLowerCase(), 'err'); return Promise.reject(new Error('missing')); }
+      var userId = isCourseMode ? otherId : ui.selectedId;
+      var courseId = isCourseMode ? ui.selectedId : otherId;
+      var payload = {
+        'enrolments[0][userid]': userId,
+        'enrolments[0][courseid]': courseId,
+        'enrolments[0][roleid]': document.getElementById('en-role').value
+      };
+      var startVal = document.getElementById('en-start').value;
+      var endVal = document.getElementById('en-end').value;
+      if (startVal) payload['enrolments[0][timestart]'] = Math.floor(new Date(startVal+'T00:00:00').getTime()/1000);
+      if (endVal) payload['enrolments[0][timeend]'] = Math.floor(new Date(endVal+'T00:00:00').getTime()/1000);
+      return apiCall('enrol_manual_enrol_users', payload).then(function(){
+        toast('Enrolled', 'ok');
+        closeDrawer();
+        renderEnrollTable();
+      });
+    });
+  });
+
+  /* ================= DRAWER ================= */
+  var overlay = document.getElementById('overlay'), drawer = document.getElementById('drawer');
+  var drawerBody = document.getElementById('drawer-body'), drawerFoot = document.getElementById('drawer-foot');
+  var currentSubmit = null;
+
+  function openDrawer(title, bodyHtml, onMount, onSubmit){
+    document.getElementById('drawer-title').textContent = title;
+    drawerBody.innerHTML = '<form id="drawer-form">' + bodyHtml + '</form>';
+    currentSubmit = onSubmit;
+    drawerFoot.innerHTML = '<button type="button" class="btn btn-ghost" id="drawer-cancel">Cancel</button>'
+      + (onSubmit ? '<button type="submit" form="drawer-form" class="btn btn-primary" id="drawer-save">Save</button>' : '');
+    overlay.classList.add('show'); drawer.classList.add('show');
+    document.getElementById('drawer-cancel').addEventListener('click', closeDrawer);
+    if (onSubmit){
+      document.getElementById('drawer-form').addEventListener('submit', function(e){
+        e.preventDefault();
+        var btn = document.getElementById('drawer-save');
+        btn.disabled = true; var orig = btn.textContent; btn.textContent = 'Saving…';
+        Promise.resolve(onSubmit()).catch(function(e){
+          if (e && e.message !== 'missing') toast(errMsg(e), 'err');
+        }).finally(function(){
+          if (btn.isConnected){ btn.disabled=false; btn.textContent=orig; }
+        });
+      });
+    }
+    if (onMount) onMount();
+  }
+  function closeDrawer(){ overlay.classList.remove('show'); drawer.classList.remove('show'); currentSubmit=null; }
+  overlay.addEventListener('click', function(){ if (overlay.classList.contains('show') && !confirmBackdrop.classList.contains('show')) closeDrawer(); });
+
+  /* ================= CONFIRM ================= */
+  var confirmBackdrop = document.getElementById('confirm-backdrop');
+  var confirmAction = null;
+  function openConfirm(title, msg, onConfirm){
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-msg').textContent = msg;
+    confirmAction = onConfirm;
+    confirmBackdrop.classList.add('show');
+  }
+  document.getElementById('confirm-cancel').addEventListener('click', function(){ confirmBackdrop.classList.remove('show'); confirmAction=null; });
+  document.getElementById('confirm-ok').addEventListener('click', function(){
+    var action = confirmAction;
+    confirmBackdrop.classList.remove('show'); confirmAction = null;
+    if (action) Promise.resolve(action()).catch(function(e){ toast(errMsg(e), 'err'); });
+  });
+  confirmBackdrop.addEventListener('click', function(e){ if (e.target===confirmBackdrop){ confirmBackdrop.classList.remove('show'); confirmAction=null; } });
+
+  /* ================= API CONSOLE ================= */
+  var consoleEl = document.getElementById('console');
+  document.getElementById('console-fab').addEventListener('click', function(){
+    ui.consoleOpen = !ui.consoleOpen;
+    consoleEl.classList.toggle('show', ui.consoleOpen);
+  });
+  document.getElementById('console-close').addEventListener('click', function(){
+    ui.consoleOpen = false; consoleEl.classList.remove('show');
+  });
+  document.getElementById('console-clear').addEventListener('click', function(){
+    ui.consoleLog = []; renderConsole();
+  });
+  function renderConsole(){
+    document.getElementById('console-count').textContent = ui.consoleLog.length;
+    var list = document.getElementById('console-list');
+    if (!ui.consoleLog.length){
+      list.innerHTML = '<div class="empty" style="font-family:var(--font-body)">No calls yet — every action you take fires a real Moodle Web Services call, logged here.</div>';
+      return;
+    }
+    list.innerHTML = ui.consoleLog.map(function(entry, i){
+      return '<div class="console-row'+(entry.isErr?' err':'')+'" data-idx="'+i+'">'
+        + '<div class="line1"><span class="fn">'+esc(entry.fn)+'</span><span class="dur">'+Math.round(entry.dur)+'ms</span><span class="time">'+fmtTime(entry.time)+'</span></div>'
+        + '<div class="detail hidden"><pre>'+esc(JSON.stringify({params:entry.params, response:entry.response}, null, 2))+'</pre></div>'
+      + '</div>';
+    }).join('');
+    list.querySelectorAll('.console-row').forEach(function(row){
+      row.addEventListener('click', function(){
+        row.querySelector('.detail').classList.toggle('hidden');
+      });
+    });
+  }
+  renderConsole();
+
+  /* ================= SETTINGS / CONNECTION PANEL ================= */
+  document.getElementById('open-settings').addEventListener('click', function(){
+    var masked = conn.token.slice(0,4) + '••••••••••••••••';
+    var funcs = (conn.scopedFunctions||[]).map(function(f){ return '<span class="fchip">'+esc(f)+'</span>'; }).join('');
+    var body =
+      '<div class="kv"><span class="k">Site</span><span class="v">'+esc(conn.siteName)+'</span></div>'
+      + '<div class="kv"><span class="k">URL</span><span class="v">'+esc(conn.baseUrl)+'</span></div>'
+      + '<div class="kv"><span class="k">Connected as</span><span class="v">'+esc(conn.username)+'</span></div>'
+      + '<div class="kv"><span class="k">Token</span><span class="v">'+esc(masked)+'</span></div>'
+      + '<div style="margin-top:16px"><label>Scoped to '+conn.scopedFunctions.length+' functions — nothing else</label><div class="func-list">'+funcs+'</div></div>'
+      + '<div class="note" style="margin-top:18px">To turn this console off for everyone using it, revoke this token in Moodle: <strong>Site administration → Plugins → Web services → Manage tokens</strong>, then delete this row. No need to touch this page.</div>';
+    openDrawer('Connection', body, function(){
+      drawerFoot.innerHTML = '<button type="button" class="btn btn-ghost" id="drawer-cancel2">Close</button><button type="button" class="btn btn-danger" id="do-disconnect">Disconnect this browser</button>';
+      document.getElementById('drawer-cancel2').addEventListener('click', closeDrawer);
+      document.getElementById('do-disconnect').addEventListener('click', function(){
+        closeDrawer(); disconnect();
+      });
+    }, null);
+  });
+
+})();
+</script>
