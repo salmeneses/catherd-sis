@@ -241,7 +241,8 @@ tr:hover td{background:var(--surface-2)}
         <span class="fchip">core_user_create_users</span>
         <span class="fchip">core_course_update_courses</span>
         <span class="fchip">enrol_manual_enrol_users</span>
-        <span class="fchip">+ 12 more, scoped</span>
+        <span class="fchip">gradereport_user_get_grade_items</span>
+        <span class="fchip">+ 13 more, scoped</span>
       </div>
       <div class="note">⚠️ This console can only do what the relay's token is scoped to allow &mdash; and only while that token is valid. Revoke the token in Moodle, or change the relay's passphrase, to switch this console off for everyone using it.</div>
     </div>
@@ -268,6 +269,7 @@ tr:hover td{background:var(--surface-2)}
     <button data-view="users" class="active">Users</button>
     <button data-view="courses">Courses</button>
     <button data-view="enrollments">Enrollments</button>
+    <button data-view="grades">Grades</button>
   </nav>
 
   <main>
@@ -309,6 +311,26 @@ tr:hover td{background:var(--surface-2)}
         </div>
         <div class="tablewrap" id="enroll-table-wrap">
           <div class="empty"><div class="big">🎓</div>Pick a course above to see who's enrolled, or switch to &ldquo;By user&rdquo; to see a student's course list.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------- GRADES ---------------- -->
+    <section class="view" id="view-grades">
+      <div class="panel">
+        <div class="toolbar">
+          <h2>Grades</h2>
+          <div class="seg" id="grades-mode">
+            <button data-mode="user" class="active">By user</button>
+            <button data-mode="course">By course</button>
+          </div>
+          <select id="grades-picker" style="max-width:280px"></select>
+          <div class="search"><input type="text" id="grades-filter" placeholder="Filter by course, student or item"></div>
+          <button class="btn btn-primary" id="grades-sync-btn" disabled>↻ Sync grades</button>
+        </div>
+        <div id="grades-meta" class="hint" style="padding:0 16px 14px;display:none"></div>
+        <div class="tablewrap" id="grades-table-wrap">
+          <div class="empty"><div class="big">🎯</div>Pick a user above, then click &ldquo;Sync grades&rdquo; to pull their grade items straight from Moodle&rsquo;s gradebook via <code>gradereport_user_get_grade_items</code>.</div>
         </div>
       </div>
     </section>
@@ -362,7 +384,8 @@ tr:hover td{background:var(--surface-2)}
   var ui = {
     view: 'users', userQuery: '', courseQuery: '',
     enrollMode: 'course', selectedId: null, enrolledList: [],
-    consoleLog: [], consoleOpen: false
+    consoleLog: [], consoleOpen: false,
+    gradesMode: 'user', gradesSelectedId: null, gradesFilter: '', gradesRows: [], gradesSyncedAt: null, gradesLoading: false
   };
   var ROLE_LABELS = {1:'Manager',3:'Teacher',4:'Non-editing teacher',5:'Student'};
 
@@ -512,7 +535,7 @@ tr:hover td{background:var(--surface-2)}
       }),
       apiCall('core_course_get_categories', {}).then(function(r){ data.categories = r||[]; }).catch(function(){ data.categories=[]; })
     ]).then(function(){
-      renderUsers(); renderCourses(); populateEnrollPicker();
+      renderUsers(); renderCourses(); populateEnrollPicker(); populateGradesPicker();
     }).catch(function(e){
       toast('Failed to load data: ' + errMsg(e), 'err');
     });
@@ -907,6 +930,152 @@ tr:hover td{background:var(--surface-2)}
       });
     });
   });
+
+  /* ================= GRADES ================= */
+  document.querySelectorAll('#grades-mode button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('#grades-mode button').forEach(function(b){b.classList.remove('active');});
+      btn.classList.add('active');
+      ui.gradesMode = btn.dataset.mode;
+      ui.gradesSelectedId = null;
+      ui.gradesRows = []; ui.gradesSyncedAt = null;
+      populateGradesPicker();
+      renderGradesTable();
+    });
+  });
+
+  function populateGradesPicker(){
+    var sel = document.getElementById('grades-picker');
+    var items = ui.gradesMode === 'user' ? data.users : data.courses;
+    var label = ui.gradesMode === 'user' ? 'user' : 'course';
+    sel.innerHTML = '<option value="">Select a '+label+'…</option>' + items.map(function(it){
+      var text = ui.gradesMode === 'user' ? (it.fullname + ' ('+it.username+')') : (it.fullname + ' ('+it.shortname+')');
+      return '<option value="'+it.id+'">'+esc(text)+'</option>';
+    }).join('');
+    sel.onchange = function(){
+      ui.gradesSelectedId = sel.value ? Number(sel.value) : null;
+      ui.gradesRows = []; ui.gradesSyncedAt = null;
+      document.getElementById('grades-sync-btn').disabled = !ui.gradesSelectedId;
+      renderGradesTable();
+    };
+  }
+
+  function fmtGradeDate(ts){
+    if (!ts) return '—';
+    return new Date(ts*1000).toLocaleString([], {dateStyle:'medium', timeStyle:'short'});
+  }
+
+  function flattenGradeItems(usergrades){
+    var rows = [];
+    (usergrades||[]).forEach(function(ug){
+      var courseName = (data.courses.find(function(c){return c.id===ug.courseid;})||{}).fullname || ('Course #'+ug.courseid);
+      (ug.gradeitems||[]).forEach(function(gi){
+        rows.push({
+          courseId: ug.courseid,
+          courseName: courseName,
+          studentName: ug.userfullname || '',
+          itemName: gi.itemname || (gi.itemtype==='course' ? 'Course total' : ('(item #'+gi.id+')')),
+          itemType: gi.itemtype,
+          grade: gi.gradeformatted || '—',
+          range: (gi.grademin!==undefined && gi.grademax!==undefined) ? (gi.grademin+'–'+gi.grademax) : '—',
+          percentage: gi.percentageformatted || '—',
+          gradedOn: fmtGradeDate(gi.gradedategraded)
+        });
+      });
+    });
+    return rows;
+  }
+
+  function syncGrades(){
+    if (!ui.gradesSelectedId) return;
+    var btn = document.getElementById('grades-sync-btn');
+    btn.disabled = true; var orig = btn.textContent; btn.textContent = 'Syncing…';
+    ui.gradesLoading = true;
+    renderGradesTable();
+    var pipeline;
+    if (ui.gradesMode === 'user'){
+      pipeline = apiCall('core_enrol_get_users_courses', {userid: ui.gradesSelectedId}).then(function(courses){
+        var ids = (courses||[]).map(function(c){return c.id;});
+        if (!ids.length) return [];
+        return Promise.all(ids.map(function(cid){
+          return apiCall('gradereport_user_get_grade_items', {courseid: cid, userid: ui.gradesSelectedId})
+            .then(function(r){ return r.usergrades || []; })
+            .catch(function(){ return []; });
+        })).then(function(perCourse){ return perCourse.reduce(function(a,b){return a.concat(b);}, []); });
+      });
+    } else {
+      pipeline = apiCall('gradereport_user_get_grade_items', {courseid: ui.gradesSelectedId, userid: 0})
+        .then(function(r){ return r.usergrades || []; });
+    }
+    return pipeline.then(function(usergrades){
+      ui.gradesRows = flattenGradeItems(usergrades);
+      ui.gradesSyncedAt = new Date();
+      toast('Synced ' + ui.gradesRows.length + ' grade item' + (ui.gradesRows.length===1?'':'s'), 'ok');
+    }).catch(function(e){
+      ui.gradesRows = [];
+      toast('Grade sync failed: ' + errMsg(e), 'err');
+    }).finally(function(){
+      ui.gradesLoading = false;
+      btn.disabled = false; btn.textContent = orig;
+      renderGradesTable();
+    });
+  }
+  document.getElementById('grades-sync-btn').addEventListener('click', syncGrades);
+
+  document.getElementById('grades-filter').addEventListener('input', function(){
+    ui.gradesFilter = this.value; renderGradesTable();
+  });
+
+  function filteredGradesRows(){
+    var q = ui.gradesFilter.toLowerCase();
+    if (!q) return ui.gradesRows;
+    return ui.gradesRows.filter(function(r){
+      return (r.courseName+' '+r.studentName+' '+r.itemName).toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  function renderGradesTable(){
+    var wrap = document.getElementById('grades-table-wrap');
+    var meta = document.getElementById('grades-meta');
+    if (!ui.gradesSelectedId){
+      meta.style.display = 'none';
+      wrap.innerHTML = '<div class="empty"><div class="big">🎯</div>Pick a '+(ui.gradesMode==='user'?'user':'course')+' above, then click &ldquo;Sync grades&rdquo; to pull grade items straight from Moodle&rsquo;s gradebook via <code>gradereport_user_get_grade_items</code>.</div>';
+      return;
+    }
+    if (ui.gradesLoading){
+      meta.style.display = 'none';
+      wrap.innerHTML = '<div class="skeleton"><div class="skel-row" style="width:75%"></div><div class="skel-row" style="width:60%"></div><div class="skel-row" style="width:50%"></div></div>';
+      return;
+    }
+    if (!ui.gradesSyncedAt){
+      meta.style.display = 'none';
+      wrap.innerHTML = '<div class="empty"><div class="big">↻</div>Not synced yet &mdash; click &ldquo;Sync grades&rdquo; to pull the latest from Moodle.</div>';
+      return;
+    }
+    meta.style.display = 'block';
+    meta.textContent = 'Last synced ' + ui.gradesSyncedAt.toLocaleTimeString() + ' · ' + ui.gradesRows.length + ' grade item' + (ui.gradesRows.length===1?'':'s') + (ui.gradesMode==='user' ? ' across their enrolled courses' : ' for this course’s enrolled students');
+    var list = filteredGradesRows();
+    if (!list.length){
+      wrap.innerHTML = '<div class="empty"><div class="big">—</div>'+(ui.gradesRows.length ? 'No grade items match that filter.' : 'No grade items found (no enrollments, or the gradebook is empty).')+'</div>';
+      return;
+    }
+    var showStudentCol = ui.gradesMode === 'course';
+    var head = showStudentCol
+      ? '<tr><th>Student</th><th>Item</th><th>Grade</th><th>Range</th><th>%</th><th>Graded on</th></tr>'
+      : '<tr><th>Course</th><th>Item</th><th>Grade</th><th>Range</th><th>%</th><th>Graded on</th></tr>';
+    var rows = list.map(function(r){
+      var firstCol = showStudentCol ? esc(r.studentName) : esc(r.courseName);
+      return '<tr>'
+        + '<td class="cell-name">'+firstCol+'</td>'
+        + '<td>'+esc(r.itemName)+(r.itemType==='course' ? ' <span class="badge badge-gold">Total</span>' : '')+'</td>'
+        + '<td class="cell-name">'+esc(r.grade)+'</td>'
+        + '<td class="cell-muted">'+esc(r.range)+'</td>'
+        + '<td class="cell-muted">'+esc(r.percentage)+'</td>'
+        + '<td class="cell-muted">'+esc(r.gradedOn)+'</td>'
+      + '</tr>';
+    }).join('');
+    wrap.innerHTML = '<table><thead>'+head+'</thead><tbody>'+rows+'</tbody></table>';
+  }
 
   /* ================= DRAWER ================= */
   var overlay = document.getElementById('overlay'), drawer = document.getElementById('drawer');
